@@ -324,6 +324,77 @@ x-access-token: <JWT_TOKEN>
 
 ---
 
+### 9. 创建电话
+
+**POST** `/api/users/{userId}/phoneBoards/{boardId}/phones`
+
+**Request Body:**
+```json
+{
+  "label": "Test Phone",
+  "user": "68b943161be9734fa53dfc68",
+  "board": "68b945331be9734fa53dfeef",
+  "column": 0,
+  "rank": 0,
+  "color": "#ff7300",
+  "envName": "XMR-UP-XMN",
+  "configType": "manual",
+  "provisioning": { "vendor": "", "model": "", "link": "", "serialNumber": "", "interval": 0, "fw": "" },
+  "sipAccounts": [{
+    "label": "trunk: rc",
+    "username": "+12098881234",
+    "domain": "siptel-xmrupxmn.int.rclabenv.com",
+    "outboundProxy": "",
+    "authId": "",
+    "password": "",
+    "bca": { "numAppearances": 0, "extensionId": "", "ringDelay": 0 },
+    "integration": { "type": "", "inboundEdgeId": "" }
+  }],
+  "phoneLines": [],
+  "rcIds": { "accountId": "", "extensionId": "" },
+  "phoneFeatures": {
+    "isEnabledDnd": false,
+    "customHeaders": [],
+    "cffp": { "target": "", "always": false, "noAnswer": false, "busy": false },
+    "showPai": false,
+    "isEnabled183Response": false,
+    "holdOnTransfer": true
+  },
+  "codecs": {
+    "enabled": [
+      { "code": 111, "name": "OPUS" },
+      { "code": 63, "name": "RED" },
+      { "code": 9, "name": "G722" },
+      { "code": 0, "name": "PCMU" },
+      { "code": 8, "name": "PCMA" },
+      { "code": 13, "name": "CN" },
+      { "code": 110, "name": "telephone-event" },
+      { "code": 126, "name": "telephone-event" }
+    ],
+    "disabled": []
+  }
+}
+```
+
+**Response (201):**
+```json
+{
+  "id": "695b69413e9225280763a818"
+}
+```
+
+> ⚠️ **重要**: `domain` 字段**不要带端口号**！使用 `siptel-xmrupxmn.int.rclabenv.com` 而不是 `siptel-xmrupxmn.int.rclabenv.com:5060`
+
+---
+
+### 10. 删除电话
+
+**DELETE** `/api/users/{userId}/phoneBoards/{boardId}/phones/{phoneId}`
+
+**Response (200):** 空响应
+
+---
+
 ### API 端点汇总
 
 | 方法 | 端点 | 说明 |
@@ -332,6 +403,8 @@ x-access-token: <JWT_TOKEN>
 | GET | `/api/users/{userId}` | 获取用户信息 |
 | GET | `/api/users/{userId}/phoneBoards` | 获取 Phone Boards |
 | GET | `/api/users/{userId}/phoneBoards/{boardId}/phones` | 获取电话列表 |
+| POST | `/api/users/{userId}/phoneBoards/{boardId}/phones` | ✨ 创建电话 |
+| DELETE | `/api/users/{userId}/phoneBoards/{boardId}/phones/{phoneId}` | ✨ 删除电话 |
 | GET | `/api/users/{userId}/phoneBoards/{boardId}/phones/{phoneId}/phoneCalls` | 获取通话记录 |
 | POST | `/api/users/{userId}/phoneBoards/{boardId}/phoneCalls` | 创建通话记录 |
 | PUT | `/api/users/{userId}/phoneBoards/{boardId}/phoneCalls/{callId}` | 更新通话记录 |
@@ -349,6 +422,8 @@ x-access-token: <JWT_TOKEN>
 | `telepath_hangup` | Puppeteer | 📴 挂断当前通话 |
 | `telepath_list_phones` | REST API + Puppeteer | 📱 获取电话列表和实时状态 |
 | `telepath_call_status` | Puppeteer | 📊 获取当前通话状态 |
+| `telepath_add_phone` | REST API | ➕ 新增电话号码 (PSTN) |
+| `telepath_delete_phone` | REST API | 🗑️ 删除电话号码 |
 | `telepath_stop_browser` | Puppeteer | 🛑 停止浏览器服务 |
 
 ### 使用流程
@@ -503,6 +578,56 @@ TelePath 前端使用 **sip.js** + **WebRTC** 实现呼叫功能，REST API 无�
 
 1. **安全**: 凭据通过环境变量传递，不存储在代码中
 2. **Token 有效期**: JWT Token 可能会过期，服务会自动重新登录
-3. **SIP 域名**: 不同环境使用不同的 SIP 域名
+3. **SIP 域名**: 不同环境使用不同的 SIP 域名，**不要带端口号**
 4. **WebRTC 限制**: 呼叫功能需要 Chrome 浏览器支持
+5. **电话数量限制**: 同一 Board 最多同时注册 **3 个电话号码**
 
+---
+
+## 测试结果 (2026-01-05)
+
+### ✅ 已验证的 API 功能
+
+| API | 状态 | 说明 |
+|-----|------|------|
+| `POST /api/auth/signin` | ✅ 工作 | 登录获取 token |
+| `GET /api/users/{userId}/phoneBoards` | ✅ 工作 | 获取 Board 列表 |
+| `GET /api/users/{userId}/phoneBoards/{boardId}/phones` | ✅ 工作 | 获取电话列表 |
+| `POST /api/users/{userId}/phoneBoards/{boardId}/phones` | ✅ 工作 | 创建电话 |
+| `DELETE /api/users/{userId}/phoneBoards/{boardId}/phones/{phoneId}` | ✅ 工作 | 删除电话 |
+
+### 🧪 电话注册测试
+
+| 创建顺序 | 号码 | 注册状态 |
+|----------|------|----------|
+| Test Phone 1 | +12098882328 | ✅ 已注册 |
+| Test Phone 2 | +12098886874 | ✅ 已注册 |
+| Test Phone 3 | +12098884064 | ✅ 已注册 |
+| Test Phone 4 | +12098884909 | ❌ 未注册 |
+| Test Phone 5 | +12098889298 | ❌ 未注册 |
+
+**结论**: 同一 Board 最多同时注册 **3 个电话号码**，超出的号码将保持 Unregistered 状态。
+
+### 📞 拨打电话测试
+
+- **主叫**: +12098882328 (Test Phone 1)
+- **被叫**: +12128881843 (外部号码)
+- **结果**: ✅ 成功建立通话
+
+### 🔧 关键发现
+
+1. **SIP Domain 不能带端口号**
+   - ✅ 正确: `siptel-xmrupxmn.int.rclabenv.com`
+   - ❌ 错误: `siptel-xmrupxmn.int.rclabenv.com:5060`
+
+2. **电话号码可以随机生成**
+   - 格式: `+1209888xxxx` (4位随机数)
+   - 注册后可正常拨打真实号码
+
+3. **必须使用的配置**
+   - 环境 (envName): `XMR-UP-XMN`
+   - Trunk: `rc`
+   - SIP Domain: `siptel-xmrupxmn.int.rclabenv.com` (不带端口)
+
+4. **电话数量限制**
+   - 同一 Board 最多同时注册 **3 个电话号码**

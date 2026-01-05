@@ -155,6 +155,31 @@ function getTools() {
       inputSchema: { type: 'object', properties: {} }
     },
     {
+      name: 'telepath_add_phone',
+      description: '➕ 新增电话号码 (PSTN)',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          phoneNumber: { type: 'string', description: '电话号码 (可选，默认自动生成 +1209888xxxx)' },
+          label: { type: 'string', description: '电话标签 (可选，默认 "New Phone")' },
+          envName: { type: 'string', description: '环境名称 (可选，默认 "XMR-UP-XMN"，必须用此环境才能注册成功)' },
+          trunk: { type: 'string', description: 'Trunk 类型 (可选，默认 "rc")' }
+        },
+        required: []
+      }
+    },
+    {
+      name: 'telepath_delete_phone',
+      description: '🗑️ 删除电话号码',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          phoneId: { type: 'string', description: '电话 ID (必须)' }
+        },
+        required: ['phoneId']
+      }
+    },
+    {
       name: 'telepath_stop_browser',
       description: '🛑 停止浏览器服务',
       inputSchema: { type: 'object', properties: {} }
@@ -290,6 +315,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         const status = await service.getCallStatus();
         return successResponse(`📊 通话状态: ${JSON.stringify(status)}`);
+      }
+
+      case 'telepath_add_phone': {
+        const result = await service.apiAddPhone({
+          phoneNumber: args.phoneNumber,
+          label: args.label,
+          envName: args.envName,
+          trunk: args.trunk
+        });
+
+        // 更新缓存的电话列表
+        try {
+          const phones = await service.apiGetPhones();
+          cachedPhones = formatPhones(phones);
+        } catch {
+          // 忽略刷新失败
+        }
+
+        return successResponse(`➕ 新增电话成功!\n${JSON.stringify(result, null, 2)}`);
+      }
+
+      case 'telepath_delete_phone': {
+        const result = await service.apiDeletePhone(args.phoneId);
+
+        // 更新缓存的电话列表
+        try {
+          const phones = await service.apiGetPhones();
+          cachedPhones = formatPhones(phones);
+        } catch {
+          // 忽略刷新失败
+        }
+
+        return successResponse(`🗑️ 删除电话成功!\n${JSON.stringify(result, null, 2)}`);
       }
 
       case 'telepath_stop_browser': {

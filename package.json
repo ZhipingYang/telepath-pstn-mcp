@@ -1,6 +1,6 @@
 {
   "name": "telepath-pstn-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "TelePath MCP Server - Control TelePath phones via AI",
   "main": "telepath-mcp-server.js",
   "bin": {

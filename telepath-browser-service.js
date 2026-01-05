@@ -175,6 +175,156 @@ class TelepathBrowserService {
   }
 
   /**
+   * 生成随机电话号码
+   * 格式: +1209888xxxx (后四位随机)
+   */
+  _generatePhoneNumber() {
+    const suffix = Math.floor(1000 + Math.random() * 9000); // 1000-9999
+    return `+1209888${suffix}`;
+  }
+
+  /**
+   * REST API: 创建新电话
+   * @param {Object} options - 可选配置
+   * @param {string} options.phoneNumber - 电话号码 (默认自动生成 +1209888xxxx)
+   * @param {string} options.label - 电话标签 (默认 "New Phone")
+   * @param {string} options.envName - 环境名称 (默认 "XMR-UP-XMN"，必须用此环境才能注册成功)
+   * @param {string} options.trunk - Trunk 类型 (默认 "rc"，必须用 "rc" 才能注册成功)
+   *
+   * ⚠️ 注意:
+   * - envName 必须是 "XMR-UP-XMN"
+   * - trunk 必须是 "rc"
+   * - 同一 Board 最多同时注册 3 个电话号码
+   */
+  async apiAddPhone(options = {}) {
+    if (!this.accessToken) await this.apiLogin();
+    await this._ensureBoardId();
+
+    const { userId, boardId } = this.config.xmnup;
+    const phoneNumber = options.phoneNumber || this._generatePhoneNumber();
+    const label = options.label || 'New Phone';
+    const envName = options.envName || 'XMR-UP-XMN';  // 必须用 XMR-UP-XMN 才能注册成功
+    const trunk = options.trunk || 'rc';
+
+    // 根据环境名称确定 SIP domain
+    const sipDomain = this._getSipDomain(envName);
+
+    const phoneData = {
+      label,
+      user: userId,
+      board: boardId,
+      column: 0,
+      rank: 0,
+      color: '#ff7300',
+      envName,
+      configType: 'manual',
+      provisioning: {
+        vendor: '',
+        model: '',
+        link: '',
+        serialNumber: '',
+        interval: 0,
+        fw: ''
+      },
+      sipAccounts: [{
+        label: `trunk: ${trunk}`,
+        username: phoneNumber,
+        domain: sipDomain,
+        outboundProxy: '',
+        authId: '',
+        password: '',
+        bca: {
+          numAppearances: 0,
+          extensionId: '',
+          ringDelay: 0
+        },
+        integration: {
+          type: '',
+          inboundEdgeId: ''
+        }
+      }],
+      phoneLines: [],
+      rcIds: {
+        accountId: '',
+        extensionId: ''
+      },
+      phoneFeatures: {
+        isEnabledDnd: false,
+        customHeaders: [],
+        cffp: {
+          target: '',
+          always: false,
+          noAnswer: false,
+          busy: false
+        },
+        showPai: false,
+        isEnabled183Response: false,
+        holdOnTransfer: true
+      },
+      codecs: {
+        enabled: [
+          { code: 111, name: 'OPUS' },
+          { code: 63, name: 'RED' },
+          { code: 9, name: 'G722' },
+          { code: 0, name: 'PCMU' },
+          { code: 8, name: 'PCMA' },
+          { code: 13, name: 'CN' },
+          { code: 110, name: 'telephone-event' },
+          { code: 126, name: 'telephone-event' }
+        ],
+        disabled: []
+      }
+    };
+
+    const response = await fetch(
+      `${this.telepathUrl}/api/users/${userId}/phoneBoards/${boardId}/phones`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': this.accessToken
+        },
+        body: JSON.stringify(phoneData)
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`创建电话失败: HTTP ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    return {
+      id: result.id,
+      phoneNumber,
+      label,
+      envName,
+      trunk
+    };
+  }
+
+  /**
+   * 根据环境名称获取 SIP domain
+   * 注意: 不要带端口号，否则无法注册成功
+   */
+  _getSipDomain(envName) {
+    // 常用环境的 SIP domain 映射 (不带端口号!)
+    const domainMap = {
+      'XMN-UP': 'siptel-xmnup.int.rclabenv.com',
+      'XMR-UP-XMN': 'siptel-xmrupxmn.int.rclabenv.com',
+      'AI-DEM-AMS': 'siptel-aidemams.int.rclabenv.com',
+    };
+
+    if (domainMap[envName]) {
+      return domainMap[envName];
+    }
+
+    // 默认格式: siptel-{envname-lowercase}.int.rclabenv.com (不带端口号!)
+    const envLower = envName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return `siptel-${envLower}.int.rclabenv.com`;
+  }
+
+  /**
    * REST API: 获取通话记录/状态
    */
   async apiGetCalls(phoneId) {
@@ -189,6 +339,27 @@ class TelepathBrowserService {
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return response.json();
+  }
+
+  /**
+   * REST API: 删除电话
+   * @param {string} phoneId - 电话 ID
+   */
+  async apiDeletePhone(phoneId) {
+    if (!this.accessToken) await this.apiLogin();
+    await this._ensureBoardId();
+
+    const { userId, boardId } = this.config.xmnup;
+    const response = await fetch(
+      `${this.telepathUrl}/api/users/${userId}/phoneBoards/${boardId}/phones/${phoneId}`,
+      {
+        method: 'DELETE',
+        headers: { 'x-access-token': this.accessToken }
+      }
+    );
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return { success: true, phoneId };
   }
 
   // ============ 浏览器方法 (用于 WebRTC 操作) ============
