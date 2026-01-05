@@ -251,10 +251,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             const idlePhones = formatted.filter(p => p.canReceiveCall);
             const busyPhones = formatted.filter(p => !p.canReceiveCall && p.status);
+            const unregisteredPhones = formatted.filter(p => !p.status);
 
             statusInfo = `\n\n📊 实时状态:\n`;
             statusInfo += `  🟢 闲置可接听: ${idlePhones.map(p => p.number).join(', ') || '无'}\n`;
             statusInfo += `  🔴 忙线中: ${busyPhones.map(p => `${p.number}(${p.status})`).join(', ') || '无'}`;
+            if (unregisteredPhones.length > 0) {
+              statusInfo += `\n  ⏳ 未注册: ${unregisteredPhones.map(p => p.number).join(', ')}`;
+              statusInfo += '\n  💡 提示: 新号码需要等待注册完成，可尝试停止浏览器后重新获取';
+            }
           } catch {
             statusInfo = '\n\n⚠️ 无法获取实时状态';
           }
@@ -325,6 +330,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           trunk: args.trunk
         });
 
+        // 如果浏览器被重启了，更新状态
+        if (result.needsRestart) {
+          browserStarted = false;
+          await notifyToolsChanged();
+        }
+
         // 更新缓存的电话列表
         try {
           const phones = await service.apiGetPhones();
@@ -333,7 +344,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           // 忽略刷新失败
         }
 
-        return successResponse(`➕ 新增电话成功!\n${JSON.stringify(result, null, 2)}`);
+        // 构建返回消息
+        const info = {
+          id: result.id,
+          phoneNumber: result.phoneNumber,
+          label: result.label,
+          envName: result.envName,
+          trunk: result.trunk
+        };
+
+        let message = `➕ 新增电话成功!\n${JSON.stringify(info, null, 2)}`;
+        if (result.message) {
+          message += `\n\n${result.message}`;
+        }
+        message += '\n\n💡 提示: 新号码需要等待浏览器启动并进入 Board 后完成注册才能使用';
+
+        return successResponse(message);
       }
 
       case 'telepath_delete_phone': {

@@ -42,6 +42,7 @@ class TelepathBrowserService {
     this.selectedPhone = null;
     this.config = null;
     this.accessToken = null;
+    this.hasEnteredBoard = false;  // 是否已经进入过 board
 
     // 从环境变量加载配置
     this.config = this._loadConfig();
@@ -294,12 +295,24 @@ class TelepathBrowserService {
     }
 
     const result = await response.json();
+
+    // 如果浏览器正在运行，需要重启才能注册新号码
+    const needsRestart = this.browser !== null;
+    if (needsRestart) {
+      console.log('🔄 检测到浏览器正在运行，需要重启以注册新号码...');
+      await this.stop();
+    }
+
     return {
       id: result.id,
       phoneNumber,
       label,
       envName,
-      trunk
+      trunk,
+      needsRestart,
+      message: needsRestart
+        ? '⚠️ 新号码已创建，浏览器已重启。下次操作时会自动启动并等待注册。'
+        : '✅ 新号码已创建。首次使用前需要启动浏览器并等待注册完成。'
     };
   }
 
@@ -533,15 +546,13 @@ class TelepathBrowserService {
    * 确保已导航到 XMN-UP Board
    */
   async ensureOnBoard() {
-    // 检查是否已经在 board 中（有电话卡片 - 检查是否有 textbox）
-    const hasPhones = await this.page.evaluate(() => {
-      // 检查页面是否有电话卡片的 textbox
-      const textboxes = document.querySelectorAll('input[type="text"], input:not([type])');
-      return textboxes.length >= 3; // 至少有 3 个输入框表示在 board 中
-    });
-
-    if (hasPhones) {
-      return true;
+    // 如果已经进入过 board，只检查是否还在 board 中
+    if (this.hasEnteredBoard) {
+      const hasPhones = await this.page.evaluate(() => {
+        const textboxes = document.querySelectorAll('input[type="text"], input:not([type])');
+        return textboxes.length >= 3;
+      });
+      if (hasPhones) return true;
     }
 
     console.log('📍 导航到 XMN-UP Board...');
@@ -558,7 +569,78 @@ class TelepathBrowserService {
     });
 
     await this._wait(TIMEOUTS.NAVIGATION);
+
+    // 首次进入 board，等待所有号码注册完成
+    if (!this.hasEnteredBoard) {
+      console.log('🔄 首次进入 Board，等待所有号码注册...');
+      await this.waitForAllPhonesReady();
+      this.hasEnteredBoard = true;
+    }
+
     return true;
+  }
+
+  /**
+   * 等待所有电话号码注册完成
+   * 在首次进入 board 后调用，确保所有号码都准备好
+   */
+  async waitForAllPhonesReady(timeout = TIMEOUTS.REGISTRATION * 2) {
+    console.log('⏳ 等待所有电话号码注册...');
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeout) {
+      // 获取所有电话的注册状态
+      const statuses = await this.page.evaluate(() => {
+        const results = [];
+        const allTDs = document.querySelectorAll('td');
+
+        for (const td of allTDs) {
+          const text = td.innerText?.trim();
+          // 匹配电话号码格式
+          if (text && /^\+\d{10,15}$/.test(text)) {
+            let container = td;
+            let hasVisibleInput = false;
+            let isRegistering = false;
+
+            // 向上查找容器
+            for (let i = 0; i < 10 && container; i++) {
+              container = container.parentElement;
+              if (container) {
+                const input = container.querySelector('input');
+                if (input) {
+                  const rect = input.getBoundingClientRect();
+                  hasVisibleInput = rect.width > 0 && rect.height > 0;
+                }
+                // 检查是否有 "registering" 文本
+                if (container.innerText?.toLowerCase().includes('registering')) {
+                  isRegistering = true;
+                }
+              }
+            }
+
+            results.push({
+              number: text,
+              ready: hasVisibleInput && !isRegistering
+            });
+          }
+        }
+        return results;
+      });
+
+      const allReady = statuses.length > 0 && statuses.every(s => s.ready);
+      const readyCount = statuses.filter(s => s.ready).length;
+
+      if (allReady) {
+        console.log(`✅ 所有电话已注册完成 (${readyCount}/${statuses.length})`);
+        return true;
+      }
+
+      console.log(`⏳ 注册中... (${readyCount}/${statuses.length} 已完成)`);
+      await this._wait(TIMEOUTS.UI_STABLE);
+    }
+
+    console.log('⚠️ 等待注册超时，部分号码可能未就绪');
+    return false;
   }
 
   /**
@@ -873,6 +955,8 @@ class TelepathBrowserService {
       this.browser = null;
       this.page = null;
     }
+    // 重置状态，下次启动需要重新等待注册
+    this.hasEnteredBoard = false;
   }
 }
 
