@@ -30,7 +30,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git@git.ringcentral.com:daniel.yang/telepath-pstn-mcp.git"
+    "url": "git+https://github.com/ZhipingYang/telepath-pstn-mcp.git"
+  },
+  "homepage": "https://github.com/ZhipingYang/telepath-pstn-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/ZhipingYang/telepath-pstn-mcp/issues"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.1",
