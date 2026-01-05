@@ -1,0 +1,39 @@
+{
+  "name": "telepath-pstn-mcp",
+  "version": "1.0.0",
+  "description": "TelePath MCP Server - Control TelePath phones via AI",
+  "main": "telepath-mcp-server.js",
+  "bin": {
+    "telepath-pstn-mcp": "./telepath-mcp-server.js"
+  },
+  "scripts": {
+    "start": "node telepath-mcp-server.js"
+  },
+  "keywords": [
+    "telepath",
+    "mcp",
+    "sip",
+    "voip",
+    "testing",
+    "ai"
+  ],
+  "author": "RingCentral",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "telepath-mcp-server.js",
+    "telepath-browser-service.js",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git@git.ringcentral.com:daniel.yang/telepath-pstn-mcp.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "puppeteer": "^24.34.0"
+  }
+}

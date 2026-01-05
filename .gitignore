@@ -1,0 +1,17 @@
+# TelePath 配置文件 (包含敏感信息)
+telepath-config.json
+
+# Node modules
+node_modules/
+
+# 日志文件
+*.log
+
+# 临时文件
+*.tmp
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
