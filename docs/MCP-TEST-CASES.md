@@ -1,6 +1,6 @@
 # TelePath MCP 自测用例
 
-> 版本: 1.2.0  
+> 版本: 1.2.0
 > 更新日期: 2025-01-05
 
 ## 📋 测试前准备
@@ -19,183 +19,233 @@
 
 ---
 
+## 🔗 工具依赖关系
+
+### 操作类型
+
+| 类型 | 工具 | 需要浏览器？ |
+|------|------|-------------|
+| **REST API** | list_phones, add_phone, delete_phone | ❌ 不需要 |
+| **Puppeteer** | make_call, hangup, call_status | ✅ 需要 |
+
+### 工具前置条件
+
+| 工具 | 前置条件 | 说明 |
+|------|----------|------|
+| `list_phones` | 无 | 🟢 随时可调用，返回号码列表和状态 |
+| `add_phone` | 无 | 🟢 随时可调用，添加后浏览器会自动重启 |
+| `delete_phone` | 需要有效 phoneId | 🟢 从 list_phones 获取 ID |
+| `stop_browser` | 无 | 🟢 随时可调用 |
+| `call_status` | 浏览器已启动 | 🟡 否则返回"浏览器未启动" |
+| `hangup` | 浏览器已启动 + 有通话 | 🟡 否则返回错误 |
+| `make_call` | 有号码 + status=idle | 🔴 最严格，需确认号码可用 |
+
+### 标准拨打电话流程
+
+```
+1. list_phones      → 检查是否有号码
+   ├─ 无号码 → 询问用户是否 add_phone
+   └─ 有号码 → 继续
+
+2. 检查 status 字段
+   ├─ 浏览器未启动 → 无 status，任选一个号码尝试
+   └─ 浏览器已启动 → 必须选择 status=idle 的号码
+
+3. make_call        → 拨打电话（自动启动浏览器 + 等待注册）
+
+4. hangup           → 结束通话
+```
+
+---
+
 ## 🧪 测试用例
 
-### TC-01: 获取电话列表（浏览器未启动）
+> ⚠️ 每个工具都需要测试 **浏览器未启动** 和 **浏览器已启动** 两种状态
 
-**前置条件**: 浏览器未启动
+---
 
-**步骤**:
-1. 调用 `telepath_list_phones`
+### 📱 list_phones
+
+#### TC-01a: list_phones（浏览器未启动）
+
+**预设**: `stop_browser` 确保浏览器未启动
+
+**步骤**: 调用 `telepath_list_phones`
 
 **预期结果**:
-- ✅ 返回电话列表（从 API 获取）
+- ✅ 返回电话列表（从 REST API 获取）
+- ✅ 无 status/canReceiveCall 字段
 - ✅ 显示 "💡 拨打电话时会自动启动浏览器"
-- ✅ 不显示实时状态（status, canReceiveCall）
 
 ---
 
-### TC-02: 拨打电话（自动启动浏览器）
+#### TC-01b: list_phones（浏览器已启动）
 
-**前置条件**: 
-- 浏览器未启动
-- 至少有 2 个电话号码
+**预设**: `make_call` 确保浏览器已启动
 
-**步骤**:
-1. 调用 `telepath_make_call`
-   - fromNumber: 第一个号码
-   - toNumber: 任意被叫号码
-
-**预期结果**:
-- ✅ 浏览器自动启动
-- ✅ 自动等待所有号码注册完成
-- ✅ 拨打成功，返回 `{"success": true}`
-- ✅ 控制台日志显示 "🔄 首次进入 Board，等待所有号码注册..."
-
----
-
-### TC-03: 获取电话列表（浏览器已启动）
-
-**前置条件**: 浏览器已启动，有通话进行中
-
-**步骤**:
-1. 调用 `telepath_list_phones`
+**步骤**: 调用 `telepath_list_phones`
 
 **预期结果**:
 - ✅ 返回电话列表（含实时状态）
-- ✅ 每个号码显示 status: idle/in_call/ringing
-- ✅ 显示 canReceiveCall: true/false
+- ✅ 每个号码有 status: idle/in_call/ringing
+- ✅ 每个号码有 canReceiveCall: true/false
 - ✅ 显示 "📊 实时状态" 汇总
 - ✅ 显示 "✅ 浏览器已启动，可以拨打/接听电话"
 
 ---
 
-### TC-04: 获取通话状态
+### 📊 call_status
 
-**前置条件**: 有通话进行中
+#### TC-02a: call_status（浏览器未启动）
 
-**步骤**:
-1. 调用 `telepath_call_status`
+**预设**: `stop_browser` 确保浏览器未启动
+
+**步骤**: 调用 `telepath_call_status`
 
 **预期结果**:
-- ✅ 返回通话状态信息
-- ✅ 包含 hasActiveCall, callDuration 等字段
+- ✅ 返回 "💤 浏览器未启动，无法获取实时状态"
 
 ---
 
-### TC-05: 挂断电话
+#### TC-02b: call_status（浏览器已启动）
 
-**前置条件**: 有通话进行中
+**预设**: `make_call` 确保浏览器已启动
 
-**步骤**:
-1. 调用 `telepath_hangup`
+**步骤**: 调用 `telepath_call_status`
 
 **预期结果**:
-- ✅ 通话挂断
-- ✅ 返回 `{"success": true, "method": "..."}`
-- ✅ 再次调用 `telepath_list_phones`，该号码状态变为 idle
+- ✅ 返回所有号码状态汇总
+- ✅ 格式: `🟢 闲置可用: +1xxx` 和 `🔴 忙线中: +1xxx(in_call)`
 
 ---
 
-### TC-06: 添加新电话（浏览器未启动）
+### 📞 make_call
 
-**前置条件**: 浏览器未启动
+#### TC-03a: make_call（浏览器未启动）
 
-**步骤**:
-1. 调用 `telepath_add_phone`（使用默认参数）
+**预设**: `stop_browser` 确保浏览器未启动
+
+**步骤**: 调用 `telepath_make_call`
 
 **预期结果**:
-- ✅ 新号码创建成功
-- ✅ 返回新号码信息（id, phoneNumber, label, envName, trunk）
-- ✅ 显示提示信息
+- ✅ 浏览器自动启动
+- ✅ 等待所有号码注册完成
+- ✅ 拨打成功，返回 `{"success": true}`
 
 ---
 
-### TC-07: 添加新电话（浏览器已启动）⭐
+#### TC-03b: make_call（浏览器已启动，号码 idle）
 
-**前置条件**: 浏览器已启动
+**预设**: 先拨打再挂断，确保浏览器启动且号码 idle
 
-**步骤**:
-1. 调用 `telepath_add_phone`（使用默认参数）
+**步骤**: 调用 `telepath_make_call`
 
 **预期结果**:
-- ✅ 新号码创建成功
-- ✅ 浏览器自动停止
-- ✅ 返回消息包含 "⚠️ 新号码已创建，浏览器已重启"
-- ✅ 再次调用 `telepath_list_phones`，显示 "💡 拨打电话时会自动启动浏览器"
+- ✅ 直接拨打，无需等待注册
+- ✅ 拨打成功，返回 `{"success": true}`
 
 ---
 
-### TC-08: 新号码首次使用
+### 📴 hangup
 
-**前置条件**: 
-- 刚添加新号码
-- 浏览器未启动
+#### TC-04a: hangup（浏览器未启动）
 
-**步骤**:
-1. 用新号码调用 `telepath_make_call`
+**预设**: `stop_browser` 确保浏览器未启动
 
-**预期结果**:
-- ✅ 浏览器启动
-- ✅ 等待所有号码（包括新号码）注册完成
-- ✅ 拨打成功
-- ✅ 控制台显示注册进度 "⏳ 注册中... (x/y 已完成)"
-
----
-
-### TC-09: 删除电话
-
-**前置条件**: 至少有 2 个电话号码
-
-**步骤**:
-1. 调用 `telepath_list_phones` 获取电话 ID
-2. 调用 `telepath_delete_phone`
-   - phoneId: 要删除的电话 ID
-
-**预期结果**:
-- ✅ 删除成功
-- ✅ 返回 `{"success": true}`
-- ✅ 再次调用 `telepath_list_phones`，该号码不存在
-
----
-
-### TC-10: 停止浏览器
-
-**前置条件**: 浏览器已启动
-
-**步骤**:
-1. 调用 `telepath_stop_browser`
-
-**预期结果**:
-- ✅ 返回 "🛑 浏览器已停止"
-- ✅ 再次调用 `telepath_list_phones`，显示 "💡 拨打电话时会自动启动浏览器"
-- ✅ 调用 `telepath_call_status`，返回 "💤 浏览器未启动，无活动通话"
-
----
-
-### TC-11: 挂断（无活动通话）
-
-**前置条件**: 浏览器已启动，无通话
-
-**步骤**:
-1. 调用 `telepath_hangup`
-
-**预期结果**:
-- ✅ 返回 `{"success": false}` 或提示无通话
-
----
-
-### TC-12: 挂断（浏览器未启动）
-
-**前置条件**: 浏览器未启动
-
-**步骤**:
-1. 调用 `telepath_hangup`
+**步骤**: 调用 `telepath_hangup`
 
 **预期结果**:
 - ✅ 返回错误 "浏览器未启动，无活动通话"
 
 ---
+
+#### TC-04b: hangup（浏览器已启动，有通话）
+
+**预设**: `make_call` 确保有通话进行中
+
+**步骤**: 调用 `telepath_hangup`
+
+**预期结果**:
+- ✅ 挂断成功，返回 `{"success": true}`
+
+---
+
+### ➕ add_phone
+
+#### TC-05a: add_phone（浏览器未启动）
+
+**预设**: `stop_browser` 确保浏览器未启动
+
+**步骤**: 调用 `telepath_add_phone`
+
+**预期结果**:
+- ✅ 新号码创建成功
+- ✅ 返回新号码信息（id, phoneNumber, label, envName, trunk）
+- ✅ 无"浏览器已重启"提示
+
+---
+
+#### TC-05b: add_phone（浏览器已启动）
+
+**预设**: `make_call` + `hangup` 确保浏览器启动
+
+**步骤**: 调用 `telepath_add_phone`
+
+**预期结果**:
+- ✅ 新号码创建成功
+- ✅ 浏览器自动停止
+- ✅ 返回消息包含 "⚠️ 新号码已创建，浏览器已重启"
+- ✅ 再次 `list_phones` 显示 "💡 拨打电话时会自动启动浏览器"
+
+---
+
+### 🗑️ delete_phone
+
+#### TC-06a: delete_phone（浏览器未启动）
+
+**预设**: `stop_browser` 确保浏览器未启动
+
+**步骤**: 调用 `telepath_delete_phone`（使用有效 phoneId）
+
+**预期结果**:
+- ✅ 删除成功，返回 `{"success": true}`
+
+---
+
+#### TC-06b: delete_phone（浏览器已启动）
+
+**预设**: `make_call` + `hangup` 确保浏览器启动
+
+**步骤**: 调用 `telepath_delete_phone`（使用有效 phoneId）
+
+**预期结果**:
+- ✅ 删除成功，返回 `{"success": true}`
+- ✅ 浏览器保持运行（不受影响）
+
+---
+
+### 🛑 stop_browser
+
+#### TC-07a: stop_browser（浏览器未启动）
+
+**预设**: 确保浏览器未启动
+
+**步骤**: 调用 `telepath_stop_browser`
+
+**预期结果**:
+- ✅ 返回 "� 浏览器已停止"（幂等操作）
+
+---
+
+#### TC-07b: stop_browser（浏览器已启动）
+
+**预设**: `make_call` + `hangup` 确保浏览器启动
+
+**步骤**: 调用 `telepath_stop_browser`
+
+**预期结果**:
+- ✅ 浏览器停止
+- ✅ 返回 "🛑 浏览器已停止"
 
 ## 🔄 场景测试
 
@@ -263,41 +313,48 @@
 
 ### E-02: 删除不存在的电话
 
-**步骤**: `telepath_delete_phone` 使用无效 phoneId
+**步骤**: `telepath_delete_phone` 使用无效 phoneId（如 `invalid_id_12345`）
 
-**预期**: 返回错误信息
+**预期**: 返回错误 `电话 ID "invalid_id_12345" 不存在或已被删除`
 
 ---
 
 ### E-03: 重复添加相同号码
 
-**步骤**: `telepath_add_phone` 使用已存在的 phoneNumber
+**步骤**: `telepath_add_phone` 使用已存在的 phoneNumber（如 `+12098882165`）
 
-**预期**: 返回错误或提示已存在
+**预期**: 返回错误 `电话号码 +12098882165 已存在 (ID: xxx)`
 
 ---
 
 ## ✅ 测试检查清单
 
-| 用例 | 状态 | 备注 |
+### 基础用例（按工具 × 状态）
+
+| 工具 | 未启动 (a) | 已启动 (b) |
+|------|------------|------------|
+| list_phones | ⬜ TC-01a | ⬜ TC-01b |
+| call_status | ⬜ TC-02a | ⬜ TC-02b |
+| make_call | ⬜ TC-03a | ⬜ TC-03b |
+| hangup | ⬜ TC-04a | ⬜ TC-04b |
+| add_phone | ⬜ TC-05a | ⬜ TC-05b |
+| delete_phone | ⬜ TC-06a | ⬜ TC-06b |
+| stop_browser | ⬜ TC-07a | ⬜ TC-07b |
+
+### 场景测试
+
+| 用例 | 状态 | 说明 |
 |------|------|------|
-| TC-01 | ⬜ | |
-| TC-02 | ⬜ | |
-| TC-03 | ⬜ | |
-| TC-04 | ⬜ | |
-| TC-05 | ⬜ | |
-| TC-06 | ⬜ | |
-| TC-07 | ⬜ | |
-| TC-08 | ⬜ | |
-| TC-09 | ⬜ | |
-| TC-10 | ⬜ | |
-| TC-11 | ⬜ | |
-| TC-12 | ⬜ | |
-| S-01 | ⬜ | |
-| S-02 | ⬜ | |
-| S-03 | ⬜ | |
-| S-04 | ⬜ | |
-| E-01 | ⬜ | |
-| E-02 | ⬜ | |
-| E-03 | ⬜ | |
+| S-01 | ⬜ | 完整通话流程 |
+| S-02 | ⬜ | 号码管理流程 |
+| S-03 | ⬜ | 浏览器重启后状态恢复 |
+| S-04 | ⬜ | 添加号码触发浏览器重启 |
+
+### 异常测试
+
+| 用例 | 状态 | 说明 |
+|------|------|------|
+| E-01 | ⬜ | 无效号码拨打 |
+| E-02 | ⬜ | 删除不存在的电话 |
+| E-03 | ⬜ | 重复添加相同号码 |
 

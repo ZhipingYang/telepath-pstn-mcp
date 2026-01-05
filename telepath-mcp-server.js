@@ -129,11 +129,15 @@ function getTools() {
   return [
     {
       name: 'telepath_make_call',
-      description: `📞 拨打电话 (${phoneListDesc})`,
+      description: `📞 拨打电话 (${phoneListDesc})
+⚠️ 调用前必须:
+1. 先调用 list_phones 检查是否有号码，若无则询问用户是否添加
+2. 确认 fromNumber 的 status 为 idle 才能拨打
+3. 若 status 为 in_call/ringing/registering 则不可用`,
       inputSchema: {
         type: 'object',
         properties: {
-          fromNumber: { type: 'string', description: '主叫号码 (如 +12098889406)' },
+          fromNumber: { type: 'string', description: '主叫号码 (必须是 status=idle 的号码)' },
           toNumber: { type: 'string', description: '被叫号码 (如 +12128881843)' }
         },
         required: ['fromNumber', 'toNumber']
@@ -146,12 +150,15 @@ function getTools() {
     },
     {
       name: 'telepath_list_phones',
-      description: `📱 获取电话列表和状态 ${browserStatus}`,
+      description: `📱 获取电话列表和状态 ${browserStatus}
+⚠️ 拨打电话前必须先调用此接口:
+- 检查是否有可用号码 (若无则询问用户是否添加)
+- 确认号码 status=idle 才可拨打`,
       inputSchema: { type: 'object', properties: {} }
     },
     {
       name: 'telepath_call_status',
-      description: '📊 获取当前通话状态',
+      description: '📊 获取所有号码的当前状态 (idle/in_call/ringing/registering)',
       inputSchema: { type: 'object', properties: {} }
     },
     {
@@ -316,10 +323,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'telepath_call_status': {
         if (!browserStarted) {
-          return successResponse('💤 浏览器未启动，无活动通话');
+          return successResponse('💤 浏览器未启动，无法获取实时状态。请先拨打电话或调用 list_phones 查看号码列表');
         }
-        const status = await service.getCallStatus();
-        return successResponse(`📊 通话状态: ${JSON.stringify(status)}`);
+        const statuses = await service.getPhoneStatuses();
+
+        // 格式化输出
+        const idle = statuses.filter(s => s.status === 'idle').map(s => s.number);
+        const busy = statuses.filter(s => s.status !== 'idle').map(s => `${s.number}(${s.status})`);
+
+        let summary = '📊 所有号码状态:\n';
+        summary += `  🟢 闲置可用: ${idle.length > 0 ? idle.join(', ') : '无'}\n`;
+        summary += `  🔴 忙线中: ${busy.length > 0 ? busy.join(', ') : '无'}`;
+
+        return successResponse(summary);
       }
 
       case 'telepath_add_phone': {

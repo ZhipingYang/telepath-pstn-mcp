@@ -207,6 +207,18 @@ class TelepathBrowserService {
     const envName = options.envName || 'XMR-UP-XMN';  // 必须用 XMR-UP-XMN 才能注册成功
     const trunk = options.trunk || 'rc';
 
+    // 检查号码是否已存在
+    if (options.phoneNumber) {
+      const existingPhones = await this.apiGetPhones();
+      const duplicate = existingPhones.find(p =>
+        p.sipAccounts?.some(a => a.username === phoneNumber)
+      );
+      if (duplicate) {
+        const duplicateId = duplicate._id || duplicate.id;
+        throw new Error(`电话号码 ${phoneNumber} 已存在 (ID: ${duplicateId})`);
+      }
+    }
+
     // 根据环境名称确定 SIP domain
     const sipDomain = this._getSipDomain(envName);
 
@@ -371,7 +383,12 @@ class TelepathBrowserService {
       }
     );
 
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) {
+      if (response.status === 404 || response.status === 500) {
+        throw new Error(`电话 ID "${phoneId}" 不存在或已被删除`);
+      }
+      throw new Error(`删除失败: HTTP ${response.status}`);
+    }
     return { success: true, phoneId };
   }
 
